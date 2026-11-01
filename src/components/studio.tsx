@@ -1,11 +1,13 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Dices, Download, RectangleHorizontal, RectangleVertical, RotateCcw, Shuffle, Spline } from "lucide-react";
 import { downloadText, toHpgl, toSvg } from "@/lib/plot/export";
-import { formatLength, formatParam, roundToStep, strokesToD, travelToD, layoutDrawing } from "@/lib/plot/geometry";
+import { formatLength, formatParam, roundToStep, strokesToD, travelToD, layoutDrawing, marginFrame, penOverlap } from "@/lib/plot/geometry";
 import { defaults, GENERATORS, getGenerator, pickParams, randomize, renderGenerator, usesSeed } from "@/lib/plot/registry";
 import { GROUPS, INKS, PAPERS, type GroupId, type PaperId } from "@/lib/plot/types";
 
 const STORAGE = "linia.v1";
+
+type FrameMode = "off" | "guide" | "pen";
 
 type Memory = {
   genId?: string;
@@ -14,6 +16,7 @@ type Memory = {
   paperId?: PaperId;
   landscape?: boolean;
   margin?: number;
+  frame?: FrameMode;
   strokeMm?: number;
   smooth?: number;
   ink?: string;
@@ -29,6 +32,7 @@ export function Studio() {
   const [paperId, setPaperId] = useState<PaperId>("a4");
   const [landscape, setLandscape] = useState(false);
   const [margin, setMargin] = useState(14);
+  const [frame, setFrame] = useState<FrameMode>("guide");
   const [strokeMm, setStrokeMm] = useState(0.35);
   const [smooth, setSmooth] = useState(0.06);
   const [inkId, setInkId] = useState("tinte");
@@ -54,6 +58,7 @@ export function Studio() {
         if (data.paperId && PAPERS.some((p) => p.id === data.paperId)) setPaperId(data.paperId);
         if (typeof data.landscape === "boolean") setLandscape(data.landscape);
         if (typeof data.margin === "number") setMargin(clampNum(data.margin, 6, 30));
+        if (data.frame === "off" || data.frame === "guide" || data.frame === "pen") setFrame(data.frame);
         if (typeof data.strokeMm === "number") setStrokeMm(clampNum(data.strokeMm, 0.15, 1.2));
         if (typeof data.smooth === "number") setSmooth(clampNum(data.smooth, 0, 0.5));
         if (data.ink && INKS.some((i) => i.id === data.ink)) setInkId(data.ink);
@@ -76,6 +81,7 @@ export function Studio() {
       paperId,
       landscape,
       margin,
+      frame,
       strokeMm,
       smooth,
       ink: inkId,
@@ -84,7 +90,7 @@ export function Studio() {
       marks,
     };
     localStorage.setItem(STORAGE, JSON.stringify(payload));
-  }, [ready, genId, params, seed, paperId, landscape, margin, strokeMm, smooth, inkId, showTravel, sortPaths, marks]);
+  }, [ready, genId, params, seed, paperId, landscape, margin, frame, strokeMm, smooth, inkId, showTravel, sortPaths, marks]);
 
   const gen = getGenerator(genId);
   const snapshot = useMemo(() => ({ genId, params, seed }), [genId, params, seed]);
@@ -103,8 +109,19 @@ export function Studio() {
     () => layoutDrawing(raw, { w: sheetW, h: sheetH, margin, smooth, sort: sortPaths, marks }),
     [raw, sheetW, sheetH, margin, smooth, sortPaths, marks],
   );
-  const d = useMemo(() => strokesToD(layout.strokes), [layout.strokes]);
-  const travel = useMemo(() => (showTravel ? travelToD(layout.strokes) : ""), [showTravel, layout.strokes]);
+  const frameStroke = useMemo(() => marginFrame(sheetW, sheetH, margin), [sheetW, sheetH, margin]);
+  const plotStrokes = useMemo(
+    () => (frame === "pen" ? [frameStroke, ...layout.strokes] : layout.strokes),
+    [frame, frameStroke, layout.strokes],
+  );
+  const d = useMemo(() => strokesToD(plotStrokes), [plotStrokes]);
+  const travel = useMemo(() => (showTravel ? travelToD(plotStrokes) : ""), [showTravel, plotStrokes]);
+  const overlap = useMemo(() => penOverlap(layout.strokes, strokeMm), [layout.strokes, strokeMm]);
+  const hotD = useMemo(() => {
+    if (overlap.hot.length === 0) return "";
+    const size = overlap.cell;
+    return overlap.hot.map((cell) => `M${cell.x.toFixed(2)} ${cell.y.toFixed(2)}h${size}v${size}h-${size}z`).join("");
+  }, [overlap]);
 
   useEffect(() => {
     document.querySelectorAll(`[data-gen="${genId}"]`).forEach((el) => {
@@ -138,7 +155,7 @@ export function Studio() {
       shown.name,
       `Seed ${deferred.seed}`,
       `${paper.label} ${landscape ? "landscape" : "portrait"}`,
-      `Margin ${margin} mm`,
+      `Margin ${margin} mm${frame === "pen" ? ", drawn" : frame === "off" ? ", hidden" : ""}`,
       ...shown.params.map((spec) => `${spec.label} ${formatParam(deferred.params[spec.key] ?? spec.def, spec)}`),
     ];
     return bits.join(" · ");
@@ -146,7 +163,7 @@ export function Studio() {
 
   function exportSvg() {
     const svg = toSvg({
-      strokes: layout.strokes,
+      strokes: plotStrokes,
       w: sheetW,
       h: sheetH,
       strokeMm,
@@ -157,7 +174,7 @@ export function Studio() {
   }
 
   function exportHpgl() {
-    const text = toHpgl(layout.strokes, sheetH);
+    const text = toHpgl(plotStrokes, sheetH);
     downloadText(`linia-${shown.id}-${deferred.seed}.hpgl`, text, "application/octet-stream");
   }
 
@@ -202,7 +219,7 @@ export function Studio() {
           <button
             type="button"
             onClick={exportSvg}
-            disabled={layout.strokes.length === 0}
+            disabled={plotStrokes.length === 0}
             className="inline-flex h-11 items-center gap-2 rounded-full bg-brass px-4 text-sm font-medium text-desk disabled:opacity-40"
           >
             <Download className="size-4" aria-hidden="true" />
@@ -211,7 +228,7 @@ export function Studio() {
           <button
             type="button"
             onClick={exportHpgl}
-            disabled={layout.strokes.length === 0}
+            disabled={plotStrokes.length === 0}
             title="For older plotters"
             className="inline-flex h-11 items-center rounded-full border border-line px-3 text-sm disabled:opacity-40"
           >
@@ -288,22 +305,15 @@ export function Studio() {
                     role="img"
                     aria-label={`${shown.name}, ${layout.strokes.length} paths`}
                   >
-                    <rect
-                      x={margin}
-                      y={margin}
-                      width={Math.max(0, sheetW - margin * 2)}
-                      height={Math.max(0, sheetH - margin * 2)}
-                      fill="none"
-                      stroke="rgba(28,22,18,0.13)"
-                      strokeWidth={0.25}
-                    />
-                    {showTravel && travel ? (
-                      <path
-                        d={travel}
+                    {frame === "guide" ? (
+                      <rect
+                        x={margin}
+                        y={margin}
+                        width={Math.max(0, sheetW - margin * 2)}
+                        height={Math.max(0, sheetH - margin * 2)}
                         fill="none"
                         stroke="rgba(28,22,18,0.28)"
-                        strokeWidth={0.18}
-                        strokeDasharray="1.2 1.4"
+                        strokeWidth={0.35}
                       />
                     ) : null}
                     <path
@@ -314,6 +324,17 @@ export function Studio() {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
+                    {hotD ? <path d={hotD} fill="#c5362b" fillOpacity={0.45} /> : null}
+                    {showTravel && travel ? (
+                      <path
+                        d={travel}
+                        fill="none"
+                        stroke="#d6453d"
+                        strokeWidth={0.9}
+                        strokeDasharray="2.8 1.6"
+                        strokeLinecap="round"
+                      />
+                    ) : null}
                     {layout.strokes.length === 0 ? (
                       <text
                         x={sheetW / 2}
@@ -466,6 +487,19 @@ export function Studio() {
                 display={`${Math.round(margin)} mm`}
                 onChange={setMargin}
               />
+              <label className="block">
+                <span className="text-sm">Margin line</span>
+                <select
+                  value={frame}
+                  aria-label="Margin line"
+                  onChange={(e) => setFrame(e.target.value as FrameMode)}
+                  className="mt-1 h-11 w-full rounded-md border border-line bg-desk px-3 text-base"
+                >
+                  <option value="off">Hidden</option>
+                  <option value="guide">Shown, not plotted</option>
+                  <option value="pen">Drawn by the pen</option>
+                </select>
+              </label>
               <Range
                 label="Stroke"
                 min={0.15}
@@ -505,6 +539,11 @@ export function Studio() {
                 </div>
               </div>
               <Toggle on={showTravel} label="Travel moves" onClick={() => setShowTravel((v) => !v)} />
+              {showTravel ? (
+                <p className="text-xs text-pretty text-mist">
+                  Red dashes are pen-up moves, preview only. Plotter software plans the real travel.
+                </p>
+              ) : null}
               <Toggle on={sortPaths} label="Sort paths" onClick={() => setSortPaths((v) => !v)} />
               <Toggle on={marks} label="Crop marks" onClick={() => setMarks((v) => !v)} />
             </div>
@@ -514,6 +553,13 @@ export function Studio() {
               <Stat label="Points" value={layout.points.toLocaleString("en-US")} />
               <Stat label="Pen down" value={formatLength(layout.penDown)} />
               <Stat label="Pen up" value={formatLength(layout.penUp)} />
+              <Stat label="Deepest pass" value={overlap.max <= 1 ? "1×" : `${overlap.max}×`} />
+              {overlap.max >= overlap.warnAt ? (
+                <p className="pt-2 text-pretty text-[#e07a6a]">
+                  One spot is drawn {overlap.max} times. A {strokeMm.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mm
+                  felt tip starts to soak the paper around {overlap.warnAt} passes. The red wash marks those spots.
+                </p>
+              ) : null}
               {longPlot ? (
                 <p className="pt-2 text-pretty text-mist">
                   Long plot. Fewer points, or a little smoothing, shortens the time on the machine.

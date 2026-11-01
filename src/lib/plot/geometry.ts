@@ -415,6 +415,76 @@ export function layoutDrawing(
   };
 }
 
+export function marginFrame(w: number, h: number, margin: number): Stroke {
+  const x0 = margin;
+  const y0 = margin;
+  const x1 = Math.max(margin, w - margin);
+  const y1 = Math.max(margin, h - margin);
+  return [
+    [x0, y0],
+    [x1, y0],
+    [x1, y1],
+    [x0, y1],
+    [x0, y0],
+  ];
+}
+
+/** How many times the pen enters the same pen-width cell. One continuous pass counts once. */
+export type OverlapReport = {
+  max: number;
+  warnAt: number;
+  cell: number;
+  hot: Array<{ x: number; y: number }>;
+};
+
+export function soakLimit(penMm: number): number {
+  if (penMm >= 0.8) return 5;
+  if (penMm >= 0.45) return 8;
+  return 10;
+}
+
+export function penOverlap(strokes: Stroke[], penMm: number): OverlapReport {
+  const cell = Math.max(0.4, penMm);
+  const warnAt = soakLimit(penMm);
+  const inv = 1 / cell;
+  const counts = new Map<number, number>();
+  let max = 0;
+  const keyOf = (x: number, y: number) => Math.floor(x * inv) * 8192 + Math.floor(y * inv);
+  for (const stroke of strokes) {
+    if (stroke.length < 2) continue;
+    let prev = Number.NaN;
+    for (let i = 1; i < stroke.length; i++) {
+      const x0 = stroke[i - 1][0];
+      const y0 = stroke[i - 1][1];
+      const x1 = stroke[i][0];
+      const y1 = stroke[i][1];
+      const len = Math.hypot(x1 - x0, y1 - y0);
+      const n = Math.max(1, Math.ceil(len / (cell * 0.85)));
+      for (let k = 0; k <= n; k++) {
+        const t = k / n;
+        const key = keyOf(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+        if (key === prev) continue;
+        prev = key;
+        const next = (counts.get(key) ?? 0) + 1;
+        counts.set(key, next);
+        if (next > max) max = next;
+      }
+    }
+  }
+  const hot: Array<{ x: number; y: number; n: number }> = [];
+  if (max >= warnAt) {
+    for (const [key, n] of counts) {
+      if (n < warnAt) continue;
+      const ix = Math.floor(key / 8192);
+      const iy = key - ix * 8192;
+      hot.push({ x: ix * cell, y: iy * cell, n });
+    }
+    hot.sort((a, b) => b.n - a.n);
+    if (hot.length > 900) hot.length = 900;
+  }
+  return { max, warnAt, cell, hot };
+}
+
 export function formatLength(mm: number): string {
   if (mm >= 1000) {
     return `${(mm / 1000).toLocaleString("en-US", {
