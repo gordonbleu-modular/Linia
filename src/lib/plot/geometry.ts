@@ -339,11 +339,10 @@ export function pointCount(strokes: Stroke[]): number {
 }
 
 export function cropMarks(w: number, h: number, margin: number): Stroke[] {
-  if (margin < 8) return [];
-  const len = Math.min(6, margin - 2.5);
-  const gap = 1.2;
-  if (!(len > 1)) return [];
-  const m = margin;
+  const m = Math.max(0, Math.min(margin, w / 2 - 0.5, h / 2 - 0.5));
+  const len = Math.max(3.5, Math.min(9, m > 1.2 ? m - 1.2 : 5));
+  const gap = m > len + 1.4 ? 1.3 : 0.4;
+  const clamp = (v: number, max: number) => Math.min(max - 0.3, Math.max(0.3, v));
   const corners: [number, number, number, number][] = [
     [m, m, -1, -1],
     [w - m, m, 1, -1],
@@ -352,14 +351,12 @@ export function cropMarks(w: number, h: number, margin: number): Stroke[] {
   ];
   const strokes: Stroke[] = [];
   for (const [x, y, sx, sy] of corners) {
-    strokes.push([
-      [x + sx * gap, y],
-      [x + sx * (gap + len), y],
-    ]);
-    strokes.push([
-      [x, y + sy * gap],
-      [x, y + sy * (gap + len)],
-    ]);
+    const x0 = clamp(x + sx * gap, w);
+    const x1 = clamp(x + sx * (gap + len), w);
+    const y0 = clamp(y + sy * gap, h);
+    const y1 = clamp(y + sy * (gap + len), h);
+    if (Math.abs(x1 - x0) > 1.5) strokes.push([[x0, y], [x1, y]]);
+    if (Math.abs(y1 - y0) > 1.5) strokes.push([[x, y0], [x, y1]]);
   }
   return strokes;
 }
@@ -392,6 +389,7 @@ export function travelToD(strokes: Stroke[], digits = 2): string {
 
 export type Layout = {
   strokes: Stroke[];
+  marks: Stroke[];
   penDown: number;
   penUp: number;
   points: number;
@@ -409,6 +407,7 @@ export function layoutDrawing(
   const strokes = opt.sort ? sortStrokes(merged) : merged;
   return {
     strokes,
+    marks,
     penDown: polylineLength(strokes),
     penUp: travelLength(strokes),
     points: pointCount(strokes),

@@ -117,6 +117,7 @@ export function Studio() {
   const d = useMemo(() => strokesToD(plotStrokes), [plotStrokes]);
   const travel = useMemo(() => (showTravel ? travelToD(plotStrokes) : ""), [showTravel, plotStrokes]);
   const overlap = useMemo(() => penOverlap(layout.strokes, strokeMm), [layout.strokes, strokeMm]);
+  const marksD = useMemo(() => strokesToD(layout.marks), [layout.marks]);
   const hotD = useMemo(() => {
     if (overlap.hot.length === 0) return "";
     const size = overlap.cell;
@@ -333,6 +334,16 @@ export function Studio() {
                         strokeWidth={0.9}
                         strokeDasharray="2.8 1.6"
                         strokeLinecap="round"
+                      />
+                    ) : null}
+                    {marksD ? (
+                      <path
+                        d={marksD}
+                        fill="none"
+                        stroke={ink.hex}
+                        strokeWidth={1.6}
+                        vectorEffect="non-scaling-stroke"
+                        strokeLinecap="square"
                       />
                     ) : null}
                     {layout.strokes.length === 0 ? (
