@@ -1,2 +1,3 @@
 # Linia
-pen plotter studio with SVG export
+
+A small studio for mathematical line drawings. Pick a generator, move the sliders, then export SVG or HPGL for a pen plotter.

@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@theme {
+  --color-desk: #141210;
+  --color-panel: #1e1a17;
+  --color-line: #3a332c;
+  --color-paper: #f3eadc;
+  --color-ink: #1c1612;
+  --color-brass: #c6a36a;
+  --color-mist: #a89c90;
+  --color-fg: #f4eee6;
+  --font-display: "Fraunces", "Iowan Old Style", Palatino, "Palatino Linotype", serif;
+  --font-sans: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    background: var(--color-desk);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background: var(--color-desk);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brass);
+    outline-offset: 2px;
+  }
+}
+
+.stage-slot {
+  container-type: size;
+}
+
+.sheet {
+  background-color: var(--color-paper);
+  background-image:
+    radial-gradient(ellipse at 28% 0%, rgba(255, 252, 247, 0.85), transparent 52%),
+    radial-gradient(ellipse at 90% 100%, rgba(120, 78, 40, 0.06), transparent 46%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 0 0 1px rgba(28, 22, 18, 0.16),
+    0 22px 50px rgba(0, 0, 0, 0.42);
+}
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 2.75rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slider:focus {
+  outline: none;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--color-line);
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -7px;
+  border: 2px solid var(--color-desk);
+  border-radius: 999px;
+  background: var(--color-brass);
+}
+
+.slider::-moz-range-track {
+  height: 2px;
+  background: var(--color-line);
+  border: none;
+}
+
+.slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-desk);
+  border-radius: 999px;
+  background: var(--color-brass);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+  }
+}
