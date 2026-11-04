@@ -133,6 +133,53 @@ export function sample(n: number, fn: (t: number, i: number) => Vec | null): Str
   return strokes;
 }
 
+function catmull(p0: Vec, p1: Vec, p2: Vec, p3: Vec, t: number): Vec {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const x =
+    0.5 *
+    (2 * p1[0] +
+      (-p0[0] + p2[0]) * t +
+      (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
+      (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
+  const y =
+    0.5 *
+    (2 * p1[1] +
+      (-p0[1] + p2[1]) * t +
+      (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
+      (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
+  return [x, y];
+}
+
+/** Draw a smooth curve through the polyline. `times` is samples per original segment. */
+export function subdivideSmooth(stroke: Stroke, times: number): Stroke {
+  const steps = Math.max(1, Math.round(times));
+  if (steps <= 1 || stroke.length < 3) return stroke;
+  const n = stroke.length;
+  const closed = Math.hypot(stroke[0][0] - stroke[n - 1][0], stroke[0][1] - stroke[n - 1][1]) < 1e-3;
+  const period = closed ? n - 1 : n;
+  const at = (i: number): Vec => {
+    if (closed) {
+      const k = ((i % period) + period) % period;
+      return stroke[k];
+    }
+    if (i <= 0) return stroke[0];
+    if (i >= n - 1) return stroke[n - 1];
+    return stroke[i];
+  };
+  const out: Stroke = [];
+  const segCount = closed ? period : n - 1;
+  for (let i = 0; i < segCount; i++) {
+    const p0 = at(i - 1);
+    const p1 = at(i);
+    const p2 = at(i + 1);
+    const p3 = at(i + 2);
+    for (let s = 0; s < steps; s++) out.push(catmull(p0, p1, p2, p3, s / steps));
+  }
+  out.push(closed ? [out[0][0], out[0][1]] : stroke[n - 1]);
+  return out;
+}
+
 export function rdp(points: Stroke, eps: number): Stroke {
   const n = points.length;
   if (n < 3 || !(eps > 0)) return points;
@@ -397,10 +444,13 @@ export type Layout = {
 
 export function layoutDrawing(
   raw: Stroke[],
-  opt: { w: number; h: number; margin: number; smooth: number; sort: boolean; marks: boolean },
+  opt: { w: number; h: number; margin: number; smooth: number; points: number; sort: boolean; marks: boolean },
 ): Layout {
   const fitted = fitStrokes(raw, opt.w, opt.h, opt.margin);
-  const simplified = opt.smooth > 0 ? fitted.map((s) => rdp(s, opt.smooth)) : fitted;
+  const curved =
+    opt.points > 1 ? fitted.map((stroke) => subdivideSmooth(stroke, opt.points)) : fitted;
+  const eps = opt.smooth > 0 ? opt.smooth / Math.max(1, opt.points) : 0;
+  const simplified = eps > 0 ? curved.map((s) => rdp(s, eps)) : curved;
   const welded = weldStrokes(simplified, 0.15);
   const marks = opt.marks ? cropMarks(opt.w, opt.h, opt.margin) : [];
   const merged = marks.length ? [...marks, ...welded] : welded;

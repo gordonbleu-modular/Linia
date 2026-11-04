@@ -19,6 +19,7 @@ type Memory = {
   frame?: FrameMode;
   strokeMm?: number;
   smooth?: number;
+  points?: number;
   ink?: string;
   showTravel?: boolean;
   sortPaths?: boolean;
@@ -34,7 +35,8 @@ export function Studio() {
   const [margin, setMargin] = useState(14);
   const [frame, setFrame] = useState<FrameMode>("guide");
   const [strokeMm, setStrokeMm] = useState(0.35);
-  const [smooth, setSmooth] = useState(0.06);
+  const [smooth, setSmooth] = useState(0.02);
+  const [points, setPoints] = useState(3);
   const [inkId, setInkId] = useState("tinte");
   const [showTravel, setShowTravel] = useState(false);
   const [sortPaths, setSortPaths] = useState(true);
@@ -61,6 +63,7 @@ export function Studio() {
         if (data.frame === "off" || data.frame === "guide" || data.frame === "pen") setFrame(data.frame);
         if (typeof data.strokeMm === "number") setStrokeMm(clampNum(data.strokeMm, 0.15, 1.2));
         if (typeof data.smooth === "number") setSmooth(clampNum(data.smooth, 0, 0.5));
+        if (typeof data.points === "number") setPoints(clampNum(Math.round(data.points), 1, 6));
         if (data.ink && INKS.some((i) => i.id === data.ink)) setInkId(data.ink);
         if (typeof data.showTravel === "boolean") setShowTravel(data.showTravel);
         if (typeof data.sortPaths === "boolean") setSortPaths(data.sortPaths);
@@ -84,13 +87,14 @@ export function Studio() {
       frame,
       strokeMm,
       smooth,
+      points,
       ink: inkId,
       showTravel,
       sortPaths,
       marks,
     };
     localStorage.setItem(STORAGE, JSON.stringify(payload));
-  }, [ready, genId, params, seed, paperId, landscape, margin, frame, strokeMm, smooth, inkId, showTravel, sortPaths, marks]);
+  }, [ready, genId, params, seed, paperId, landscape, margin, frame, strokeMm, smooth, points, inkId, showTravel, sortPaths, marks]);
 
   const gen = getGenerator(genId);
   const snapshot = useMemo(() => ({ genId, params, seed }), [genId, params, seed]);
@@ -106,8 +110,8 @@ export function Studio() {
     [shown, deferred.params, deferred.seed],
   );
   const layout = useMemo(
-    () => layoutDrawing(raw, { w: sheetW, h: sheetH, margin, smooth, sort: sortPaths, marks }),
-    [raw, sheetW, sheetH, margin, smooth, sortPaths, marks],
+    () => layoutDrawing(raw, { w: sheetW, h: sheetH, margin, smooth, points, sort: sortPaths, marks }),
+    [raw, sheetW, sheetH, margin, smooth, points, sortPaths, marks],
   );
   const frameStroke = useMemo(() => marginFrame(sheetW, sheetH, margin), [sheetW, sheetH, margin]);
   const plotStrokes = useMemo(
@@ -263,7 +267,7 @@ export function Studio() {
               if (items.length === 0) return null;
               return (
                 <div key={group}>
-                  <h2 className="sticky top-0 bg-panel px-3 py-2 text-xs tracking-widest text-mist uppercase">
+                  <h2 className="sticky top-0 z-10 border-b border-brass/50 bg-desk px-3 py-2 font-display text-[13px] tracking-[0.22em] text-brass uppercase">
                     {group}
                   </h2>
                   {items.map((item) => (
@@ -519,6 +523,15 @@ export function Studio() {
                 value={strokeMm}
                 display={`${strokeMm.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mm`}
                 onChange={setStrokeMm}
+              />
+              <Range
+                label="Points"
+                min={1}
+                max={6}
+                step={1}
+                value={points}
+                display={`${Math.round(points)}×`}
+                onChange={setPoints}
               />
               <Range
                 label="Smoothing"

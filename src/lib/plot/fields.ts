@@ -55,6 +55,94 @@ export const fieldGens: Generator[] = [
     },
   },
   {
+    id: "vector",
+    name: "Vector field",
+    group: "Fields",
+    hint: "Evenly spaced streamlines of a formula. Spacing keeps the pen from piling up.",
+    params: [
+      {
+        key: "feld",
+        label: "Field",
+        min: 0,
+        max: 4,
+        step: 1,
+        def: 0,
+        integer: true,
+        names: ["Waves", "Swirl", "Saddle", "Orbit", "Meander"],
+      },
+      { key: "freq", label: "Frequency", min: 0.4, max: 4, step: 0.05, def: 1.4 },
+      { key: "bend", label: "Bend", min: 0.2, max: 2.2, step: 0.05, def: 0.9 },
+      { key: "winkel", label: "Angle", min: 0, max: 180, step: 0.5, def: 18 },
+      { key: "abstand", label: "Spacing", min: 0.04, max: 0.16, step: 0.005, def: 0.07 },
+      { key: "laenge", label: "Length", min: 60, max: 320, step: 10, def: 160, integer: true },
+    ],
+    draw: (p) => {
+      const kind = Math.max(0, Math.min(4, Math.round(param(p, "feld", 0))));
+      const freq = param(p, "freq", 1.4);
+      const bend = param(p, "bend", 0.9);
+      const angle = (param(p, "winkel", 18) * Math.PI) / 180;
+      const sep = Math.max(0.035, param(p, "abstand", 0.07));
+      const maxLen = Math.round(param(p, "laenge", 160));
+      const step = 0.011;
+      const c = Math.cos(angle);
+      const s = Math.sin(angle);
+      const unit = (x: number, y: number): Vec => {
+        const l = Math.hypot(x, y) || 1;
+        return [x / l, y / l];
+      };
+      const fieldAt = (x: number, y: number): Vec => {
+        const xr = x * c - y * s;
+        const yr = x * s + y * c;
+        const f = freq * Math.PI;
+        if (kind === 1) return unit(-yr, xr * bend + 0.2);
+        if (kind === 2) return unit(Math.sin(f * yr), Math.cos(f * xr) * bend);
+        if (kind === 3) {
+          const r = Math.hypot(xr, yr) + 0.22;
+          return unit(-yr / r + bend * 0.5, xr / r);
+        }
+        if (kind === 4) return unit(1, bend * Math.sin(f * xr) * Math.cos(f * yr * 0.6));
+        return unit(1, bend * Math.sin(f * xr + Math.sin(f * yr * 0.45)));
+      };
+      const cell = sep * 0.55;
+      const inv = 1 / cell;
+      const keyOf = (x: number, y: number) => Math.floor((x + 2) * inv) * 8192 + Math.floor((y + 2) * inv);
+      const taken = new Set<number>();
+      const occupied = (x: number, y: number) => taken.has(keyOf(x, y));
+      const trace = (x0: number, y0: number, dir: 1 | -1): Stroke => {
+        const pts: Stroke = [];
+        let x = x0;
+        let y = y0;
+        for (let i = 0; i < maxLen; i++) {
+          if (x < -1.05 || x > 1.05 || y < -1.05 || y > 1.05) break;
+          if (i > 4 && occupied(x, y)) break;
+          pts.push([x, y]);
+          const [vx, vy] = fieldAt(x, y);
+          const [ux, uy] = fieldAt(x + vx * step * 0.5 * dir, y + vy * step * 0.5 * dir);
+          x += ux * step * dir;
+          y += uy * step * dir;
+        }
+        return pts;
+      };
+      const strokes: Stroke[] = [];
+      const seeds: Vec[] = [];
+      for (let y = -1; y <= 1.001; y += sep) {
+        for (let x = -1; x <= 1.001; x += sep) seeds.push([x, y]);
+      }
+      for (const [sx, sy] of seeds) {
+        if (strokes.length >= 80) break;
+        if (occupied(sx, sy)) continue;
+        const forward = trace(sx, sy, 1);
+        const back = trace(sx, sy, -1);
+        back.reverse();
+        const line = back.length > 1 ? back.slice(0, -1).concat(forward) : forward;
+        if (line.length < 40) continue;
+        for (const [x, y] of line) taken.add(keyOf(x, y));
+        strokes.push(line);
+      }
+      return strokes;
+    },
+  },
+  {
     id: "topo",
     name: "Topography",
     group: "Fields",
